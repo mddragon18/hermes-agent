@@ -30,7 +30,12 @@ def prune_uv_cache_to_lock(cache: Path, source_repo: Path) -> int:
     entry count for the build log.
     """
     keep = lock_package_names(source_repo)
-    dist_info = re.compile(r"([A-Za-z0-9_.]+?)-\d[^-]*\.dist-info")
+    # A dist name may contain hyphens (`python-dateutil-2.9.0.dist-info`), so the name half has
+    # to allow them and the version separator must be the LAST `-digit` run before `.dist-info`.
+    # A name class that excludes hyphens silently identifies nothing for hyphenated dists, which
+    # leaves exactly the superseded pins a rolling cache grows — and pruning fails open, so the
+    # miss is invisible rather than loud.
+    dist_info = re.compile(r"(.+)-\d[^-]*\.dist-info$")
 
     def dist_name(bucket: Path) -> str | None:
         for marker_file in bucket.glob("*.dist-info"):
