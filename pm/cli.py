@@ -530,6 +530,24 @@ def cmd_gc(args) -> int:
     return 0
 
 
+def cmd_cache_prune(args) -> int:
+    """Reclaim the Hermes-owned uv cache. PM writes it and never reaps it, so this is the
+    consumer that gives Hermes ownership of the directory it creates (issue #148719, item 3).
+    Exact to the repo's uv.lock, so a prune cannot cost a re-download for anything the current
+    lock still resolves."""
+    from pm.cache_maintenance import prune_machine_uv_cache
+
+    result = prune_machine_uv_cache(args.repo, cache=args.cache)
+    if result["skipped"]:
+        print(f"cache-prune: {result['skipped']} ({result['cache']})")
+        return 0
+    from hermes_cli.sizefmt import format_bytes
+
+    print(f"cache-prune: removed {result['pruned_entries']} superseded entries, "
+          f"reclaimed {format_bytes(result['freed_bytes'])} from {result['cache']}")
+    return 0
+
+
 def _run_live(cmd: list[str], *, cwd, env, timeout: int = 3600) -> tuple[int, str]:
     """Stream CI progress with the Python engine's bounded drain and diagnostic tail."""
     from pm.environment import _run_streaming
@@ -876,6 +894,11 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("gc", help="remove store entries nothing references")
     p.set_defaults(func=cmd_gc)
+
+    p = sub.add_parser("cache-prune", help="reclaim the Hermes-owned uv cache, keeping what uv.lock pins")
+    p.add_argument("--repo", help="repo whose uv.lock defines what to keep (default: this checkout)")
+    p.add_argument("--cache", type=Path, help="cache directory to prune (default: PM's shared uv cache)")
+    p.set_defaults(func=cmd_cache_prune)
 
     p = sub.add_parser("bundle", help="stage a payload (repo+store+facts+relocatable venv) into --out")
     p.add_argument("--out", required=True)
